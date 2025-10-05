@@ -1,0 +1,205 @@
+<!-- templates/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevRaze - The Roastmaster AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+
+        :root {
+            --background-color: #121212;
+            --text-color: #e0e0e0;
+            --primary-color: #bb86fc;
+            --primary-variant: #3700b3;
+            --secondary-color: #03dac6;
+            --surface-color: #1e1e1e;
+            --error-color: #cf6679;
+            --font-family: 'Roboto Mono', monospace;
+        }
+
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+
+        .container {
+            background-color: var(--surface-color);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid var(--primary-variant);
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 30px;
+            opacity: 0.8;
+            line-height: 1.6;
+        }
+
+        #status {
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .status-disconnected {
+            color: var(--error-color);
+            background-color: rgba(207, 102, 121, 0.1);
+        }
+
+        .status-connecting {
+            color: #f0e68c;
+            background-color: rgba(240, 230, 140, 0.1);
+        }
+
+        .status-connected {
+            color: var(--secondary-color);
+            background-color: rgba(3, 218, 198, 0.1);
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: var(--font-family);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--secondary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        button:disabled {
+            background-color: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DevRaze, the Roastmaster AI</h1>
+        <p>Embedded in Rajesh Yarra’s portfolio. Ask me anything about him. I dare you. I promise it won't crash... probably.</p>
+        <div id="status" class="status-disconnected">Status: Disconnected</div>
+        <button id="connect-button">Connect Microphone</button>
+    </div>
+
+    <script>
+        const connectButton = document.getElementById('connect-button');
+        const statusDiv = document.getElementById('status');
+        
+        // This will be automatically provided by Livekit when you deploy
+        // For local dev, you'll set LIVEKIT_URL in your .env
+        const LIVEKIT_URL = `wss://${window.location.hostname}`;
+        const TOKEN_ENDPOINT = '/get-token';
+
+        let room = null;
+        let isConnected = false;
+
+        function updateStatus(message, className) {
+            statusDiv.textContent = `Status: ${message}`;
+            statusDiv.className = className;
+        }
+        
+        async function connectToRoom() {
+            if (isConnected) return;
+            
+            connectButton.disabled = true;
+            connectButton.textContent = "Initializing...";
+            updateStatus('Connecting...', 'status-connecting');
+
+            try {
+                // Fetch a token from our server
+                const resp = await fetch(TOKEN_ENDPOINT);
+                if (!resp.ok) {
+                    throw new Error(`Failed to fetch token: ${resp.status} ${resp.statusText}`);
+                }
+                const { token } = await resp.json();
+
+                // Create and configure the room
+                room = new LivekitClient.Room({
+                    audioCaptureDefaults: {
+                        autoGainControl: true,
+                        noiseSuppression: true,
+                    },
+                });
+
+                // Set up event listeners
+                room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                    console.log('Disconnected from room');
+                    handleDisconnect();
+                });
+
+                // Connect to the room
+                await room.connect(LIVEKIT_URL, token);
+                console.log('Successfully connected to room', room.name);
+
+                // Start microphone
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('Microphone enabled');
+
+                // Update UI for connected state
+                isConnected = true;
+                updateStatus('Connected. Start talking!', 'status-connected');
+                connectButton.textContent = "Disconnect";
+                connectButton.disabled = false;
+
+            } catch (error) {
+                console.error('Connection failed:', error);
+                updateStatus(`Error: ${error.message}`, 'status-disconnected');
+                connectButton.textContent = "Connect Microphone";
+                connectButton.disabled = false;
+            }
+        }
+
+        async function handleDisconnect() {
+            if (room) {
+                await room.disconnect();
+            }
+            room = null;
+            isConnected = false;
+            updateStatus('Disconnected', 'status-disconnected');
+            connectButton.textContent = "Connect Microphone";
+            connectButton.disabled = false;
+        }
+
+        connectButton.addEventListener('click', () => {
+            if (isConnected) {
+                handleDisconnect();
+            } else {
+                connectToRoom();
+            }
+        });
+
+    </script>
+</body>
+</html>
