@@ -60,6 +60,7 @@
             padding: 10px;
             border-radius: 4px;
             transition: all 0.3s ease;
+            word-break: break-word; /* Prevent long errors from breaking layout */
         }
 
         .status-disconnected {
@@ -103,23 +104,48 @@
             color: #888;
             cursor: not-allowed;
         }
+        
+        /* Visualizer bars (optional enhancement) */
+        #visualizer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 30px;
+            margin-top: 20px;
+            gap: 3px;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        
+        .bar {
+            width: 4px;
+            background-color: var(--secondary-color);
+            border-radius: 2px;
+            height: 5px;
+            transition: height 0.1s ease;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>DevRaze, the Roastmaster AI</h1>
-        <p>Embedded in Rajesh Yarra’s portfolio. Ask me anything about him. I dare you. I promise it won't crash... probably.</p>
-        <div id="status" class="status-disconnected">Status: Disconnected</div>
+        <p>Embedded in Rajesh Yarra’s portfolio. Ask me anything about him. I dare you.</p>
+        <div id="status" class="status-disconnected">Status: Ready to roast.</div>
         <button id="connect-button">Connect Microphone</button>
+        
+        <!-- Simple visualizer -->
+        <div id="visualizer">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            <div class="bar"></div><div class="bar"></div>
+        </div>
     </div>
 
     <script>
         const connectButton = document.getElementById('connect-button');
         const statusDiv = document.getElementById('status');
+        const visualizer = document.getElementById('visualizer');
+        const bars = document.querySelectorAll('.bar');
         
-        // This will be automatically provided by Livekit when you deploy
-        // For local dev, you'll set LIVEKIT_URL in your .env
-        const LIVEKIT_URL = `wss://${window.location.hostname}`;
         const TOKEN_ENDPOINT = '/get-token';
 
         let room = null;
@@ -135,49 +161,75 @@
             
             connectButton.disabled = true;
             connectButton.textContent = "Initializing...";
-            updateStatus('Connecting...', 'status-connecting');
+            updateStatus('Getting credentials...', 'status-connecting');
 
             try {
-                // Fetch a token from our server
+                // 1. Fetch token and Livekit URL from our server
                 const resp = await fetch(TOKEN_ENDPOINT);
                 if (!resp.ok) {
-                    throw new Error(`Failed to fetch token: ${resp.status} ${resp.statusText}`);
+                    throw new Error(`Server error: ${resp.statusText}`);
                 }
-                const { token } = await resp.json();
+                const data = await resp.json();
+                
+                if (!data.token || !data.livekitUrl) {
+                     throw new Error("Server didn't return token or URL");
+                }
 
-                // Create and configure the room
+                updateStatus('Connecting to Livekit...', 'status-connecting');
+
+                // 2. Create the room
                 room = new LivekitClient.Room({
                     audioCaptureDefaults: {
                         autoGainControl: true,
+                        echoCancellation: true,
                         noiseSuppression: true,
                     },
+                    adaptiveStream: true,
+                    dynacast: true,
                 });
 
-                // Set up event listeners
+                // Setup Room Event Listeners
                 room.on(LivekitClient.RoomEvent.Disconnected, () => {
                     console.log('Disconnected from room');
                     handleDisconnect();
                 });
+                
+                // Handle incoming audio from the Agent
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    if (track.kind === LivekitClient.Track.Kind.Audio) {
+                        const element = track.attach();
+                        document.body.appendChild(element);
+                        startVisualizer(track); // Optional: start simple visualizer
+                    }
+                });
 
-                // Connect to the room
-                await room.connect(LIVEKIT_URL, token);
+                // 3. Connect to Livekit Cloud using the data from server
+                await room.connect(data.livekitUrl, data.token);
                 console.log('Successfully connected to room', room.name);
 
-                // Start microphone
+                updateStatus('Activating microphone...', 'status-connecting');
+
+                // 4. Publish local microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
                 console.log('Microphone enabled');
 
                 // Update UI for connected state
                 isConnected = true;
-                updateStatus('Connected. Start talking!', 'status-connected');
+                updateStatus('Connected. Prepare to be roasted.', 'status-connected');
                 connectButton.textContent = "Disconnect";
                 connectButton.disabled = false;
 
             } catch (error) {
                 console.error('Connection failed:', error);
-                updateStatus(`Error: ${error.message}`, 'status-disconnected');
+                // Make error readable
+                let errorMsg = error.message;
+                if (errorMsg.includes('could not establish signal connection')) {
+                    errorMsg = "Could not connect to Livekit Cloud. Check server logs.";
+                }
+                updateStatus(`Error: ${errorMsg}`, 'status-disconnected');
                 connectButton.textContent = "Connect Microphone";
                 connectButton.disabled = false;
+                handleDisconnect(); // Ensure cleanup
             }
         }
 
@@ -190,6 +242,7 @@
             updateStatus('Disconnected', 'status-disconnected');
             connectButton.textContent = "Connect Microphone";
             connectButton.disabled = false;
+            stopVisualizer();
         }
 
         connectButton.addEventListener('click', () => {
@@ -199,6 +252,44 @@
                 connectToRoom();
             }
         });
+        
+        // --- Simple Audio Visualizer (Optional) ---
+        let audioContext, analyser, dataArray, visualizerFrame;
+        
+        function startVisualizer(track) {
+            visualizer.style.opacity = 1;
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const stream = new MediaStream([track.mediaStreamTrack]);
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 32;
+            source.connect(analyser);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            animateVisualizer();
+        }
+        
+        function animateVisualizer() {
+            if (!isConnected || !analyser) return;
+            analyser.getByteFrequencyData(dataArray);
+            
+            // Map frequency data to the 5 bars
+            const indices = [1, 3, 5, 7, 9]; // Pick some frequencies
+            bars.forEach((bar, i) => {
+                const value = dataArray[indices[i]] || 0;
+                const height = Math.max(5, (value / 255) * 30);
+                bar.style.height = `${height}px`;
+            });
+            visualizerFrame = requestAnimationFrame(animateVisualizer);
+        }
+        
+        function stopVisualizer() {
+            visualizer.style.opacity = 0;
+            if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
+            // Reset bars
+            bars.forEach(bar => bar.style.height = '5px');
+        }
 
     </script>
 </body>
