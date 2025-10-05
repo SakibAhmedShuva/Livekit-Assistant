@@ -45,8 +45,8 @@ def get_token():
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         .with_identity(identity)
         .with_name(f"Visitor-{identity}")
-        # CORRECTED: .with_grant() changed to .with_grants()
-        .with_grants(api.VideoGrant(room_join=True, room=ROOM_NAME))
+        # CORRECTED: api.VideoGrant changed to api.VideoGrants
+        .with_grants(api.VideoGrants(room_join=True, room=ROOM_NAME))
     )
     
     return flask.jsonify({"token": token.to_jwt()})
@@ -64,8 +64,8 @@ def run_agent_worker():
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         .with_identity("devraze-agent")
         .with_name("DevRaze")
-        # CORRECTED: .with_grant() changed to .with_grants()
-        .with_grants(api.VideoGrant(room_join=True, room=ROOM_NAME, room_admin=True, hidden=True))
+        # CORRECTED: api.VideoGrant changed to api.VideoGrants
+        .with_grants(api.VideoGrants(room_join=True, room=ROOM_NAME, room_admin=True, hidden=True))
     )
     
     # The `livekit-agent` CLI is the standard way to run agent workers
@@ -99,5 +99,4 @@ if __name__ == "__main__":
     agent_thread.start()
 
     # Run the Flask app for the frontend and token generation
-    # CORRECTED: Port changed to 7860 for Hugging Face Spaces
     app.run(host="0.0.0.0", port=7860)
