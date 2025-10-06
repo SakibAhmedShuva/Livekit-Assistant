@@ -57,57 +57,47 @@ def get_token():
 
 def run_agent_worker():
     """
-    Runs the app.py agent worker in a subprocess.
+    Runs the app.py agent worker directly via Python asyncio.
     """
     print("=" * 60)
     print("Starting Livekit Agent worker...")
     print("=" * 60)
     
-    agent_token = (
-        api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-        .with_identity("devraze-agent")
-        .with_name("DevRaze")
-        .with_grants(api.VideoGrants(room_join=True, room=ROOM_NAME, room_admin=True, hidden=True))
-    )
-    
-    command = [
-        "python", "-m", "livekit.agents", "cli", "run-agent",
-        "app:entrypoint",
-        "--room", ROOM_NAME,
-        "--url", LIVEKIT_URL,
-        "--token", agent_token.to_jwt(),
-    ]
-    
-    print(f"[DEBUG] Command: {' '.join(command[:5])}...")
-    print(f"[DEBUG] Room: {ROOM_NAME}")
-    print(f"[DEBUG] URL: {LIVEKIT_URL}")
-    print("=" * 60)
-    
     try:
-        # Using Popen instead of run so it doesn't block, but streams output
-        process = subprocess.Popen(
-            command, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
+        import asyncio
+        from app import entrypoint
+        from livekit.agents import WorkerOptions, cli
+        from livekit import rtc
+        
+        # Create agent token
+        agent_token = (
+            api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+            .with_identity("devraze-agent")
+            .with_name("DevRaze")
+            .with_grants(api.VideoGrants(
+                room_join=True, 
+                room=ROOM_NAME, 
+                room_admin=True,
+            ))
         )
         
-        print("[AGENT] Process started, streaming logs...")
+        print(f"[AGENT] Connecting to room: {ROOM_NAME}")
+        print(f"[AGENT] LiveKit URL: {LIVEKIT_URL}")
+        print("=" * 60)
         
-        # Print agent logs to the main console
-        for line in process.stdout:
-            print(f"[AGENT] {line.rstrip()}")
+        # Run the worker
+        worker_opts = WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            ws_url=LIVEKIT_URL,
+        )
+        
+        # Start the agent using the CLI
+        cli.run_app(worker_opts)
             
-        # If loop ends, process terminated
-        returncode = process.wait()
-        print(f"[AGENT] Process ended with code: {returncode}")
-            
-    except FileNotFoundError as e:
-        print(f"ERROR: Command not found - {e}")
-        print("Make sure livekit-agents is installed: pip install livekit-agents")
     except Exception as e:
-        print(f"ERROR starting agent: {e}")
+        print(f"[AGENT ERROR] {e}")
         import traceback
         traceback.print_exc()
 
