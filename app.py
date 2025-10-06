@@ -13,8 +13,12 @@ from livekit.agents import (
 )
 from livekit.plugins import google, noise_cancellation, vad
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("vision-assistant")
-logger.setLevel(logging.INFO)
 
 load_dotenv()
 
@@ -38,9 +42,9 @@ RAJESH INFO:
         )
 
     async def on_enter(self):
-        logger.info("VisionAssistant entered the room")
+        logger.info("DevRaze has entered the room!")
         self.session.generate_reply(
-            instructions="Briefly greet the user, introduce yourself as DevRaze, and tell them to ask you something about Rajesh."
+            instructions="Briefly greet the user, introduce yourself as DevRaze, and tell them to ask you something about Rajesh. Keep it punchy and edgy."
         )
 
 
@@ -49,7 +53,7 @@ async def entrypoint(ctx: JobContext):
     Main entrypoint for the agent.
     Called when the agent joins a room.
     """
-    logger.info(f"Agent starting for room: {ctx.room.name}")
+    logger.info(f"Agent joining room: {ctx.room.name}")
     
     session = AgentSession()
 
@@ -63,7 +67,7 @@ async def entrypoint(ctx: JobContext):
         ),
     )
     
-    logger.info("Agent session started successfully")
+    logger.info("Agent session started successfully - ready to roast!")
 
 
 if __name__ == "__main__":
