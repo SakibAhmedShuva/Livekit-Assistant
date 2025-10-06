@@ -48,7 +48,7 @@ def get_token():
         .with_grants(api.VideoGrants(room_join=True, room=ROOM_NAME))
     )
     
-    # FIX: Return both the token AND the Livekit URL from the environment
+    # Return both the token AND the Livekit URL from the environment
     return flask.jsonify({
         "token": token.to_jwt(),
         "livekitUrl": LIVEKIT_URL
@@ -59,7 +59,9 @@ def run_agent_worker():
     """
     Runs the app.py agent worker in a subprocess.
     """
+    print("=" * 60)
     print("Starting Livekit Agent worker...")
+    print("=" * 60)
     
     agent_token = (
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
@@ -69,14 +71,17 @@ def run_agent_worker():
     )
     
     command = [
-        "livekit-agent",
-        "run-agent",
-        "app.VisionAssistant",
-        "--url",
-        LIVEKIT_URL,
-        "--token",
-        agent_token.to_jwt(),
+        "python", "-m", "livekit.agents", "cli", "run-agent",
+        "app:entrypoint",
+        "--room", ROOM_NAME,
+        "--url", LIVEKIT_URL,
+        "--token", agent_token.to_jwt(),
     ]
+    
+    print(f"[DEBUG] Command: {' '.join(command[:5])}...")
+    print(f"[DEBUG] Room: {ROOM_NAME}")
+    print(f"[DEBUG] URL: {LIVEKIT_URL}")
+    print("=" * 60)
     
     try:
         # Using Popen instead of run so it doesn't block, but streams output
@@ -84,23 +89,40 @@ def run_agent_worker():
             command, 
             stdout=subprocess.PIPE, 
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            bufsize=1
         )
+        
+        print("[AGENT] Process started, streaming logs...")
+        
         # Print agent logs to the main console
         for line in process.stdout:
-            print(f"[AGENT] {line.strip()}")
+            print(f"[AGENT] {line.rstrip()}")
             
-    except FileNotFoundError:
-        print("Error: 'livekit-agent' command not found.")
+        # If loop ends, process terminated
+        returncode = process.wait()
+        print(f"[AGENT] Process ended with code: {returncode}")
+            
+    except FileNotFoundError as e:
+        print(f"ERROR: Command not found - {e}")
+        print("Make sure livekit-agents is installed: pip install livekit-agents")
     except Exception as e:
-        print(f"Error starting agent: {e}")
+        print(f"ERROR starting agent: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
     # Start the agent worker in a separate thread
-    agent_thread = threading.Thread(target=run_agent_worker)
-    agent_thread.daemon = True
+    agent_thread = threading.Thread(target=run_agent_worker, daemon=True)
     agent_thread.start()
 
+    # Give agent a moment to start
+    import time
+    time.sleep(2)
+
     # Run the Flask app
+    print("\n" + "=" * 60)
+    print("Starting Flask server...")
+    print("=" * 60 + "\n")
     app.run(host="0.0.0.0", port=7860)
