@@ -4,3 +4,4 @@ python-dotenv
 asyncio
 Flask
 Flask-Cors
+livekit-plugins-vad
