@@ -2,12 +2,11 @@
 
 import os
 import uuid
-import threading
-import subprocess
 import flask
 from flask_cors import CORS
 from dotenv import load_dotenv
 from livekit import api
+import multiprocessing
 
 # Load environment variables from .env file
 load_dotenv()
@@ -55,34 +54,21 @@ def get_token():
     })
 
 
-def run_agent_worker():
+def run_agent_worker_process():
     """
-    Runs the app.py agent worker directly via Python asyncio.
+    Runs the agent worker in a separate process.
+    This must run in its own process so plugins can be registered on the main thread of that process.
     """
     print("=" * 60)
-    print("Starting Livekit Agent worker...")
+    print("[AGENT PROCESS] Starting LiveKit Agent worker...")
     print("=" * 60)
     
     try:
-        import asyncio
         from app import entrypoint
         from livekit.agents import WorkerOptions, cli
-        from livekit import rtc
         
-        # Create agent token
-        agent_token = (
-            api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-            .with_identity("devraze-agent")
-            .with_name("DevRaze")
-            .with_grants(api.VideoGrants(
-                room_join=True, 
-                room=ROOM_NAME, 
-                room_admin=True,
-            ))
-        )
-        
-        print(f"[AGENT] Connecting to room: {ROOM_NAME}")
-        print(f"[AGENT] LiveKit URL: {LIVEKIT_URL}")
+        print(f"[AGENT PROCESS] Connecting to: {LIVEKIT_URL}")
+        print(f"[AGENT PROCESS] Room: {ROOM_NAME}")
         print("=" * 60)
         
         # Run the worker
@@ -103,16 +89,13 @@ def run_agent_worker():
 
 
 if __name__ == "__main__":
-    # Start the agent worker in a separate thread
-    agent_thread = threading.Thread(target=run_agent_worker, daemon=True)
-    agent_thread.start()
+    # Start the agent worker in a separate PROCESS (not thread)
+    agent_process = multiprocessing.Process(target=run_agent_worker_process, daemon=True)
+    agent_process.start()
 
-    # Give agent a moment to start
-    import time
-    time.sleep(2)
-
-    # Run the Flask app
     print("\n" + "=" * 60)
-    print("Starting Flask server...")
+    print("[FLASK] Starting Flask server...")
     print("=" * 60 + "\n")
+    
+    # Run the Flask app
     app.run(host="0.0.0.0", port=7860)
